@@ -1,3 +1,5 @@
+
+
 /*
   FSWebServer - Example WebServer with SPIFFS backend for esp8266
   Copyright (c) 2015 Hristo Gochkov. All rights reserved.
@@ -41,6 +43,7 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  *
  */
+#include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiClient.h>
 #include <WebServer.h>
@@ -48,16 +51,18 @@
 #include <ESPmDNS.h>
 #include <ArduinoOTA.h>
 #include <FS.h>
+#include <SPIFFS.h>
 #include <Ticker.h>
 #include <StreamString.h>
 
 #include <SD_MMC.h>
+#include <SD.h>
 #include "RTClib.h"
 #include <ESP32Time.h>
 #include <time.h>
 #include "driver/uart.h"
-#include "src/oi_can.h"
-#include "src/config.h"
+#include "oi_can.h"
+#include "config.h"
 
 #define DBG_OUTPUT_PORT Serial
 #define INVERTER_PORT UART_NUM_2
@@ -65,8 +70,9 @@
 #define INVERTER_TX 17
 #define UART_TIMEOUT (100 / portTICK_PERIOD_MS)
 #define UART_MESSBUF_SIZE 100
-#ifndef LED_BUILTIN
-#define LED_BUILTIN  5
+// Define LED_BUILTIN if not already defined
+#if !defined(LED_BUILTIN)
+  #define LED_BUILTIN  5  // ESP32 standard LED pin
 #endif
 
 #define RESERVED_SD_SPACE 2000000000
@@ -105,6 +111,8 @@ File dataFile;
 int startLogAttempt = 0;
 Config config;
 
+// Function declarations
+String formatBytes(uint64_t bytes);
 uint32_t deleteOldest(uint64_t spaceRequired);
 
 bool createNextSDFile()
@@ -732,14 +740,74 @@ void setup(void){
   else
     DBG_OUTPUT_PORT.println("No RTC found, defaulting to sequential file names");
 
-  //initialise SD card in SDIO mode
-  //if (SD_MMC.begin("/sdcard", true, false, 40000, 5U)) {
-  if (SD_MMC.begin()) {
-    DBG_OUTPUT_PORT.println("Started SD_MMC");
+  //initialise SD card with graceful fallback and timeout
+  DBG_OUTPUT_PORT.println("Initializing SD card...");
+  
+  // Set pins for SDMMC interface
+  // This is a workaround since we can't pass pins directly to SD_MMC.begin()
+  pinMode(SD_CLK, INPUT_PULLUP);
+  pinMode(SD_CMD, INPUT_PULLUP);
+  pinMode(SD_DAT0, INPUT_PULLUP);
+  pinMode(SD_DAT1, INPUT_PULLUP);
+  pinMode(SD_DAT2, INPUT_PULLUP);
+  pinMode(SD_DAT3, INPUT_PULLUP);
+  
+  // Use a timeout for SD card initialization to prevent hanging
+  
+  // First try: 1-bit SDIO mode (more compatible)
+  DBG_OUTPUT_PORT.println("Trying 1-bit SDIO mode...");
+  bool sdBeginResult = false;
+  
+  // Set a task that will abort SD initialization if it takes too long
+  Ticker sdTimeout;
+  sdTimeout.once(5, []() {
+    SD_MMC.end();
+    DBG_OUTPUT_PORT.println("SD card initialization timeout!");
+  });
+  
+  sdBeginResult = SD_MMC.begin("/sdcard", true, false, 40000, 5U);
+  sdTimeout.detach(); // Cancel the timeout
+  
+  if (sdBeginResult) {
+    uint64_t cardSize = SD_MMC.cardSize() / (1024 * 1024);
+    uint64_t freeSpace = (SD_MMC.totalBytes() - SD_MMC.usedBytes()) / (1024 * 1024);
+    DBG_OUTPUT_PORT.println("SD Card initialized in 1-bit SDIO mode");
+    DBG_OUTPUT_PORT.printf("SD Card Size: %llu MB\n", cardSize);
+    DBG_OUTPUT_PORT.printf("Free Space: %llu MB\n", freeSpace);
     haveSDCard = true;
   }
-  else
-    DBG_OUTPUT_PORT.println("Couldn't start SD_MMC");
+  // Second try: SPI mode fallback
+  else {
+    DBG_OUTPUT_PORT.println("SDIO mode failed, trying SPI mode...");
+    SD_MMC.end();
+    delay(500); // Give some time for cleanup
+    
+    // Set a timeout for SPI mode initialization
+    sdTimeout.once(5, []() {
+      SD.end();
+      DBG_OUTPUT_PORT.println("SD card SPI initialization timeout!");
+    });
+    
+    if (SD.begin(SD_DAT3)) { // Using CS pin (SD_DAT3/SS)
+      sdTimeout.detach(); // Cancel the timeout
+      uint64_t cardSize = SD.cardSize() / (1024 * 1024);
+      uint64_t totalBytes = SD.totalBytes();
+      uint64_t usedBytes = SD.usedBytes();
+      uint64_t freeSpace = (totalBytes - usedBytes) / (1024 * 1024);
+      
+      DBG_OUTPUT_PORT.println("SD Card initialized in SPI mode");
+      DBG_OUTPUT_PORT.printf("SD Card Size: %llu MB\n", cardSize);
+      DBG_OUTPUT_PORT.printf("Free Space: %llu MB\n", freeSpace);
+      haveSDCard = true;
+    }
+    else {
+      sdTimeout.detach(); // Cancel the timeout
+      DBG_OUTPUT_PORT.println("SD Card initialization failed in all modes");
+      haveSDCard = false;
+    }
+  }
+  
+  DBG_OUTPUT_PORT.println("SD card initialization complete.");
 
   //Start SPI Flash file system
   SPIFFS.begin();

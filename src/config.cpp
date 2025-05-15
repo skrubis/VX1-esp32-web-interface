@@ -1,5 +1,19 @@
 #include "config.h"
 #include <EEPROM.h>
+
+// Initialize config.h variables
+// I2C pins
+int I2C_SDA = 21;
+int I2C_SCL = 22;
+
+// SD card pins
+int SD_DAT0 = 2;
+int SD_DAT1 = 4; 
+int SD_DAT2 = 12;
+int SD_DAT3 = 13;
+int SD_CLK = 14;
+int SD_CMD = 15;
+
 Config::Config() {
 }
 
