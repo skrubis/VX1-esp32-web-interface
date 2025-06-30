@@ -359,13 +359,9 @@ bool SendJson(WiFiClient client) {
 
   JsonObject root = doc.as<JsonObject>();
   int failed = 0;
-  int total = 0;
-
-  DBG_OUTPUT_PORT.println("[SendJson] Starting JSON parameter processing");
 
   for (JsonPair kv : root) {
     int id = kv.value()["id"].as<int>();
-    total++;
 
     if (id > 0) {
       requestSdoElement(SDO_INDEX_PARAM_UID | (id >> 8), id & 0xff);
@@ -374,19 +370,15 @@ bool SendJson(WiFiClient client) {
         kv.value()["value"] = ((double)*(int32_t*)&rxframe.data[4]) / 32;
       } else {
         failed++;
-        DBG_OUTPUT_PORT.printf("[SendJson] Failed to get ID: %d (failed count: %d/%d)\n", id, failed, total);
       }
     }
   }
-  // Log total failure statistics
-  DBG_OUTPUT_PORT.printf("[SendJson] Completed with %d failures out of %d total parameters\n", failed, total);
-  
-  // Always return JSON response regardless of failures
-  WriteBufferingStream bufferedWifiClient{client, 4096}; // Increased buffer size for better performance
-  serializeJson(doc, bufferedWifiClient);
-  
-  // Always return true to avoid 500 error
-  return true;
+  // Allow more failed CAN reads before returning an error (increased from 5 to 50)
+  if (failed < 50) {
+    WriteBufferingStream bufferedWifiClient{client, 4096}; // Increased buffer size for better performance
+    serializeJson(doc, bufferedWifiClient);
+  }
+  return failed < 50;
 }
 
 void SendCanMapping(WiFiClient client) {
