@@ -554,6 +554,17 @@ var ui = {
 	runUpdateStep: function(step, file)
 	{
 		var runUpdateRequest = new XMLHttpRequest();
+		// Set a reasonable timeout for 250k baud CAN speed
+		// With minimal delays in the server-side code, we can use a shorter timeout
+		runUpdateRequest.timeout = 40000; // 40 seconds timeout
+		
+		// Add timeout handler
+		runUpdateRequest.ontimeout = function() {
+			console.log("Update request timed out. Retrying...");
+			// Retry the same step after a timeout
+			ui.runUpdateStep(step, file);
+		};
+		
 		runUpdateRequest.onload = function()
 		{
 			step++;

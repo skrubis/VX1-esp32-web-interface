@@ -16,3 +16,13 @@ desktop.ini
 # OS generated files
 .DS_Store
 Thumbs.db
+
+
+#local dev files
+log.txt
+bms_sdo_comms.md
+can-log.csv
+example-json-responses.md
+journey.md
+can-log copy.csv
+

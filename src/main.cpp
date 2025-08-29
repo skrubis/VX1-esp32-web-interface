@@ -616,7 +616,7 @@ static void handleNodeId()
   }
   else if(server.hasArg("id")) {
     int id = server.arg("id").toInt();
-    OICan::Init(id, OICan::Baud500k, config.getCanTXPin(), config.getCanRXPin());
+    OICan::Init(id, OICan::Baud250k, config.getCanTXPin(), config.getCanRXPin());
   }
 
   server.send(200, "text/plain", String(OICan::GetNodeId()) + "," + String(OICan::GetBaudRate()));
@@ -939,7 +939,7 @@ void setup(void){
     digitalWrite(config.getCanEnablePin(), LOW);
   }
 
-  OICan::Init(1, OICan::Baud500k, config.getCanTXPin(), config.getCanRXPin());
+  OICan::Init(10, OICan::Baud250k, config.getCanTXPin(), config.getCanRXPin());
 
   updater.setup(&server);
 
