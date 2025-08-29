@@ -1,12 +1,18 @@
 #ifndef CONFIG_H
 #define CONFIG_H
 
-#define EEPROM_VERSION 2
+#define EEPROM_VERSION 3
 typedef struct {
     int version;
     int canRXPin;
     int canTXPin;
     int canEnablePin;
+    char wifiSSID1[32];
+    char wifiPassword1[64];
+    char wifiSSID2[32];
+    char wifiPassword2[64];
+    bool wifiEnabled;
+    int wifiRetryInterval; // seconds between retry attempts
 } EEPROMSettings;
 
 // I2C pins
@@ -77,6 +83,21 @@ class Config
 
     int getCanEnablePin();
     void setCanEnablePin(int pin);
+
+    // WiFi configuration methods
+    const char* getWifiSSID1();
+    const char* getWifiPassword1();
+    const char* getWifiSSID2();
+    const char* getWifiPassword2();
+    bool getWifiEnabled();
+    int getWifiRetryInterval();
+    
+    void setWifiSSID1(const char* ssid);
+    void setWifiPassword1(const char* password);
+    void setWifiSSID2(const char* ssid);
+    void setWifiPassword2(const char* password);
+    void setWifiEnabled(bool enabled);
+    void setWifiRetryInterval(int interval);
 
     void saveSettings();
   private:

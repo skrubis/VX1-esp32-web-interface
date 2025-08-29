@@ -28,14 +28,30 @@
             <img class="buttonimg" src="/icon-check-circle.png">Modify</button></a>
     </form>
     <hr>
-    <h2>Station Settings</h2>
-    Here you can specify a Wifi network that the inverter joins.
+    <h2>WiFi Client Settings</h2>
+    <p>Configure up to two WiFi networks. The device will automatically try to connect to available networks and retry periodically.</p>
+    
     <form id="wifiClientForm" enctype="multipart/form-data" action="wifi" method="POST">
-        <p><label for="staSSID">Network SSID: </label><input id="staSSID" name="staSSID" type="text" value="%staSSID%"/></p>
-        <p><label for="staPW">WPA2 Password: </label><input id="staPW" name="staPW" type="text" /></p>
-        Current IP Address: %staIP%
-        <!-- <input type="submit" value="Modify" /> -->
-        <a href="#" onclick="wifi.wifiStationForm('wifiClientForm');"><button>
-            <img class="buttonimg" src="/icon-check-circle.png">Modify</button></a>
+        <p><label for="wifiEnabled">
+            <input id="wifiEnabled" name="wifiEnabled" type="checkbox" value="true" %wifiEnabled%/> Enable WiFi Client
+        </label></p>
+        
+        <p><label for="retryInterval">Retry Interval (seconds): </label>
+        <input id="retryInterval" name="retryInterval" type="number" min="10" max="300" value="%retryInterval%" title="Time between connection attempts (10-300 seconds)"/></p>
+        
+        <h3>Primary Network</h3>
+        <p><label for="staSSID1">Network SSID: </label><input id="staSSID1" name="staSSID1" type="text" value="%staSSID1%" placeholder="e.g., Your Home WiFi"/></p>
+        <p><label for="staPW1">WPA2 Password: </label><input id="staPW1" name="staPW1" type="password" placeholder="Enter password"/></p>
+        
+        <h3>Secondary Network (Optional)</h3>
+        <p><label for="staSSID2">Network SSID: </label><input id="staSSID2" name="staSSID2" type="text" value="%staSSID2%" placeholder="e.g., Phone Hotspot"/></p>
+        <p><label for="staPW2">WPA2 Password: </label><input id="staPW2" name="staPW2" type="password" placeholder="Enter password"/></p>
+        
+        <p><strong>Current Status:</strong><br>
+        Connected Network: %staSSID%<br>
+        IP Address: %staIP%</p>
+        
+        <a href="#" onclick="wifi.wifiClientForm('wifiClientForm');"><button>
+            <img class="buttonimg" src="/icon-check-circle.png">Save WiFi Settings</button></a>
     </form>
 </div>

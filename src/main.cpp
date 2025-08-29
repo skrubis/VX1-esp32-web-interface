@@ -97,6 +97,13 @@ HTTPUpdateServer updater;
 //holds the current upload
 File fsUploadFile;
 Ticker sta_tick;
+Ticker wifi_retry_tick;
+
+// WiFi management variables
+unsigned long lastWifiAttempt = 0;
+int currentWifiNetwork = 0; // 0 = network 1, 1 = network 2
+bool wifiConnecting = false;
+wl_status_t lastWifiStatus = WL_IDLE_STATUS;
 
 RTC_PCF8523 ext_rtc;
 ESP32Time int_rtc;
@@ -114,6 +121,8 @@ Config config;
 // Function declarations
 String formatBytes(uint64_t bytes);
 uint32_t deleteOldest(uint64_t spaceRequired);
+void tryConnectWifi();
+void wifiRetryCheck();
 
 bool createNextSDFile()
 {
@@ -660,8 +669,43 @@ static void handleWifi()
   {
     WiFi.softAP(server.arg("apSSID").c_str(), server.arg("apPW").c_str());
   }
+  else if(server.hasArg("staSSID1") && server.hasArg("staPW1"))
+  {
+    config.setWifiSSID1(server.arg("staSSID1").c_str());
+    config.setWifiPassword1(server.arg("staPW1").c_str());
+    
+    if(server.hasArg("staSSID2") && server.hasArg("staPW2")) {
+      config.setWifiSSID2(server.arg("staSSID2").c_str());
+      config.setWifiPassword2(server.arg("staPW2").c_str());
+    }
+    
+    if(server.hasArg("wifiEnabled")) {
+      config.setWifiEnabled(server.arg("wifiEnabled") == "true");
+    }
+    
+    if(server.hasArg("retryInterval")) {
+      config.setWifiRetryInterval(server.arg("retryInterval").toInt());
+    }
+    
+    config.saveSettings();
+    
+    // Restart WiFi connection process
+    wifi_retry_tick.detach();
+    currentWifiNetwork = 0;
+    wifiConnecting = false;
+    
+    if (config.getWifiEnabled()) {
+      tryConnectWifi();
+      wifi_retry_tick.attach(config.getWifiRetryInterval(), wifiRetryCheck);
+    }
+  }
   else if(server.hasArg("staSSID") && server.hasArg("staPW"))
   {
+    // Legacy single WiFi support
+    config.setWifiSSID1(server.arg("staSSID").c_str());
+    config.setWifiPassword1(server.arg("staPW").c_str());
+    config.saveSettings();
+    
     WiFi.mode(WIFI_AP_STA);
     WiFi.begin(server.arg("staSSID").c_str(), server.arg("staPW").c_str());
   }
@@ -671,8 +715,12 @@ static void handleWifi()
     String html = file.readString();
     file.close();
     html.replace("%staSSID%", WiFi.SSID());
+    html.replace("%staSSID1%", config.getWifiSSID1());
+    html.replace("%staSSID2%", config.getWifiSSID2());
     html.replace("%apSSID%", WiFi.softAPSSID());
     html.replace("%staIP%", WiFi.localIP().toString());
+    html.replace("%wifiEnabled%", config.getWifiEnabled() ? "checked" : "");
+    html.replace("%retryInterval%", String(config.getWifiRetryInterval()));
     server.send(200, "text/html", html);
     updated = false;
   }
@@ -699,6 +747,58 @@ void staCheck(){
   if(!(uint32_t)WiFi.localIP()){
     WiFi.mode(WIFI_AP); //disable station mode
   }
+}
+
+void tryConnectWifi() {
+  if (!config.getWifiEnabled()) {
+    return;
+  }
+  
+  const char* ssid = (currentWifiNetwork == 0) ? config.getWifiSSID1() : config.getWifiSSID2();
+  const char* password = (currentWifiNetwork == 0) ? config.getWifiPassword1() : config.getWifiPassword2();
+  
+  // Skip if SSID is empty
+  if (strlen(ssid) == 0) {
+    currentWifiNetwork = (currentWifiNetwork + 1) % 2;
+    return;
+  }
+  
+  DBG_OUTPUT_PORT.printf("Attempting to connect to WiFi network %d: %s\n", currentWifiNetwork + 1, ssid);
+  WiFi.mode(WIFI_AP_STA);
+  WiFi.begin(ssid, password);
+  wifiConnecting = true;
+  lastWifiAttempt = millis();
+}
+
+void wifiRetryCheck() {
+  if (!config.getWifiEnabled()) {
+    wifi_retry_tick.detach();
+    return;
+  }
+  
+  wl_status_t status = WiFi.status();
+  
+  // If we're connected, we're done
+  if (status == WL_CONNECTED) {
+    wifiConnecting = false;
+    DBG_OUTPUT_PORT.printf("WiFi connected to %s, IP: %s\n", WiFi.SSID().c_str(), WiFi.localIP().toString().c_str());
+    return;
+  }
+  
+  // If we're still connecting and haven't timed out, wait
+  if (wifiConnecting && (millis() - lastWifiAttempt < 15000)) {
+    return;
+  }
+  
+  // Connection failed or timed out, try next network
+  if (wifiConnecting) {
+    DBG_OUTPUT_PORT.printf("WiFi connection to network %d failed\n", currentWifiNetwork + 1);
+    wifiConnecting = false;
+    currentWifiNetwork = (currentWifiNetwork + 1) % 2;
+  }
+  
+  // Try to connect to the next available network
+  tryConnectWifi();
 }
 
 void setup(void){
@@ -812,6 +912,9 @@ void setup(void){
   //Start SPI Flash file system
   SPIFFS.begin();
 
+  // Load configuration first
+  config.load();
+
   //WIFI INIT
   #ifdef WIFI_IS_OFF_AT_BOOT
     enableWiFiAtBootTime();
@@ -820,12 +923,16 @@ void setup(void){
   //WiFi.setPhyMode(WIFI_PHY_MODE_11B);
   WiFi.setSleep(false);
   WiFi.setTxPower(WIFI_POWER_19_5dBm);//25); //dbm
-  WiFi.begin();
+  
+  // Start WiFi retry mechanism
+  if (config.getWifiEnabled()) {
+    tryConnectWifi();
+    wifi_retry_tick.attach(config.getWifiRetryInterval(), wifiRetryCheck);
+  }
+  
   sta_tick.attach(10, staCheck);
 
   MDNS.begin(host);
-
-  config.load();
 
   if (config.getCanEnablePin() > 0) {
     pinMode(config.getCanEnablePin(), OUTPUT);
@@ -860,6 +967,19 @@ void setup(void){
   server.on("/edit", HTTP_POST, [](){ server.send(200, "text/plain", ""); }, handleFileUpload);
 
   server.on("/wifi", handleWifi);
+  server.on("/wifi/status", [](){
+    String json = "{";
+    json += "\"connected\":" + String(WiFi.status() == WL_CONNECTED ? "true" : "false") + ",";
+    json += "\"ssid\":\"" + WiFi.SSID() + "\",";
+    json += "\"ip\":\"" + WiFi.localIP().toString() + "\",";
+    json += "\"rssi\":" + String(WiFi.RSSI()) + ",";
+    json += "\"currentNetwork\":" + String(currentWifiNetwork + 1) + ",";
+    json += "\"connecting\":" + String(wifiConnecting ? "true" : "false") + ",";
+    json += "\"enabled\":" + String(config.getWifiEnabled() ? "true" : "false") + ",";
+    json += "\"retryInterval\":" + String(config.getWifiRetryInterval());
+    json += "}";
+    server.send(200, "application/json", json);
+  });
   server.on("/cmd", handleCommand);
   server.on("/canmap", handleCanMap);
   server.on("/fwupdate", handleUpdate);

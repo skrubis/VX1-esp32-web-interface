@@ -27,6 +27,12 @@ void Config::load() {
         settings.canRXPin = GPIO_NUM_26;
         settings.canTXPin = GPIO_NUM_25;
         settings.canEnablePin = 0;
+        strcpy(settings.wifiSSID1, "");
+        strcpy(settings.wifiPassword1, "");
+        strcpy(settings.wifiSSID2, "");
+        strcpy(settings.wifiPassword2, "");
+        settings.wifiEnabled = true;
+        settings.wifiRetryInterval = 30; // 30 seconds default
     }
 }
 int Config::getCanRXPin() {
@@ -52,6 +58,60 @@ void Config::setCanTXPin(int pin) {
 
 void Config::setCanRXPin(int pin) {
     settings.canRXPin = pin;
+}
+
+// WiFi configuration getters
+const char* Config::getWifiSSID1() {
+    return settings.wifiSSID1;
+}
+
+const char* Config::getWifiPassword1() {
+    return settings.wifiPassword1;
+}
+
+const char* Config::getWifiSSID2() {
+    return settings.wifiSSID2;
+}
+
+const char* Config::getWifiPassword2() {
+    return settings.wifiPassword2;
+}
+
+bool Config::getWifiEnabled() {
+    return settings.wifiEnabled;
+}
+
+int Config::getWifiRetryInterval() {
+    return settings.wifiRetryInterval;
+}
+
+// WiFi configuration setters
+void Config::setWifiSSID1(const char* ssid) {
+    strncpy(settings.wifiSSID1, ssid, sizeof(settings.wifiSSID1) - 1);
+    settings.wifiSSID1[sizeof(settings.wifiSSID1) - 1] = '\0';
+}
+
+void Config::setWifiPassword1(const char* password) {
+    strncpy(settings.wifiPassword1, password, sizeof(settings.wifiPassword1) - 1);
+    settings.wifiPassword1[sizeof(settings.wifiPassword1) - 1] = '\0';
+}
+
+void Config::setWifiSSID2(const char* ssid) {
+    strncpy(settings.wifiSSID2, ssid, sizeof(settings.wifiSSID2) - 1);
+    settings.wifiSSID2[sizeof(settings.wifiSSID2) - 1] = '\0';
+}
+
+void Config::setWifiPassword2(const char* password) {
+    strncpy(settings.wifiPassword2, password, sizeof(settings.wifiPassword2) - 1);
+    settings.wifiPassword2[sizeof(settings.wifiPassword2) - 1] = '\0';
+}
+
+void Config::setWifiEnabled(bool enabled) {
+    settings.wifiEnabled = enabled;
+}
+
+void Config::setWifiRetryInterval(int interval) {
+    settings.wifiRetryInterval = interval;
 }
 
 void Config::saveSettings() {
